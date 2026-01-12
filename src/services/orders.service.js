@@ -20,46 +20,36 @@ const CreateOrderSchema = z.object({
 
 async function createGuestOrder(payload) {
   const parsed = CreateOrderSchema.parse(payload);
-
   const conn = await pool.getConnection();
+
   try {
     await conn.beginTransaction();
 
-    // 1) Insertar customer en anonymous_order_details
+    // 1) Insertar cliente
     const [custRes] = await conn.execute(
       `INSERT INTO anonymous_order_details
         (customer_name, customer_email, customer_phone, customer_address, is_active)
        VALUES (?, ?, ?, ?, 1)`,
-      [
-        parsed.customer.name,
-        parsed.customer.email,
-        parsed.customer.phone,
-        parsed.customer.address,
-      ]
+      [parsed.customer.name, parsed.customer.email, parsed.customer.phone, parsed.customer.address]
     );
     const anonId = custRes.insertId;
 
-    // 2) Traer productos y calcular totales (precio “congelado” al comprar)
+    // 2) Obtener productos y validar
     const ids = parsed.items.map(i => i.product_id);
     const [products] = await conn.query(
-      `SELECT id_product, name, price, stock, is_active
-       FROM products
-       WHERE id_product IN (${ids.map(() => "?").join(",")})`,
+      `SELECT id_product, name, price, stock, is_active FROM products WHERE id_product IN (${ids.map(() => "?").join(",")})`,
       ids
     );
 
-    if (products.length !== ids.length) {
-      throw new Error("Uno o más productos no existen.");
-    }
+    if (products.length !== ids.length) throw new Error("Uno o más productos no existen.");
 
-    // Validar activos y stock
     const productMap = new Map(products.map(p => [p.id_product, p]));
     const lines = [];
     let total = 0;
 
     for (const it of parsed.items) {
       const p = productMap.get(it.product_id);
-      if (!p || Number(p.is_active) !== 1) throw new Error("Producto inactivo/no válido.");
+      if (!p || Number(p.is_active) !== 1) throw new Error("Producto inactivo.");
       if (Number(p.stock) < it.quantity) throw new Error(`Stock insuficiente: ${p.name}`);
 
       const unit = Number(p.price);
@@ -74,50 +64,61 @@ async function createGuestOrder(payload) {
       });
     }
 
-    // 3) Crear order
+    // 3) Crear orden
     const code = generateOrderCode();
-    const entryDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const entryDate = new Date().toISOString().slice(0, 10);
 
     const [orderRes] = await conn.execute(
-      `INSERT INTO orders
-        (code, entry_date, id_user_fk, id_anonymous_order_details_fk, status, expected_delivery_date, is_active, created_at)
-       VALUES (?, ?, NULL, ?, 'PENDING', NULL, 1, CURRENT_TIMESTAMP)`,
+      `INSERT INTO orders (code, entry_date, id_anonymous_order_details_fk, status, is_active, created_at)
+       VALUES (?, ?, ?, 'PENDING', 1, CURRENT_TIMESTAMP)`,
       [code, entryDate, anonId]
     );
     const orderId = orderRes.insertId;
 
-    // 4) Insertar order_details + descontar stock
+    // 4) Detalles y Stock
     for (const ln of lines) {
       await conn.execute(
-        `INSERT INTO order_details
-          (id_order_fk, id_product_fk, unit_price, quantity, line_amount, created_at)
-         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO order_details (id_order_fk, id_product_fk, unit_price, quantity, line_amount) VALUES (?, ?, ?, ?, ?)`,
         [orderId, ln.product_id, ln.unit_price, ln.quantity, ln.line_amount]
       );
-
-      await conn.execute(
-        `UPDATE products SET stock = stock - ? WHERE id_product = ?`,
-        [ln.quantity, ln.product_id]
-      );
+      await conn.execute(`UPDATE products SET stock = stock - ? WHERE id_product = ?`, [ln.quantity, ln.product_id]);
     }
 
-    // 5) (Opcional) guardar total en orders si tienes campo total_amount
-    // Si NO tienes total_amount, ignora este UPDATE.
     try {
       await conn.execute(`UPDATE orders SET total_amount = ? WHERE id_order = ?`, [total.toFixed(2), orderId]);
     } catch (_) { }
 
+    // ¡ÉXITO EN DB!
     await conn.commit();
 
-    // 6) Email al negocio (fuera de la transacción)
-    await sendNewOrderEmail({
-      code,
-      customer: parsed.customer,
-      items: lines,
-      total: total.toFixed(2),
-    });
+    // 6) NOTIFICACIONES (Se hacen después del commit para asegurar que el pedido existe)
+    // Usamos un try/catch interno para que si falla el email, el usuario igual reciba su confirmación en pantalla
+    try {
+      // Correo al CLIENTE
+      await sendNewOrderEmail({
+        to: parsed.customer.email,
+        subject: `Confirmación de Pedido #${code}`,
+        code,
+        customer: parsed.customer,
+        items: lines,
+        total: total.toFixed(2)
+      });
+
+      // Correo al NEGOCIO
+      await sendNewOrderEmail({
+        to: "olstertecn597@gmail.com", // Tu correo de gestión
+        subject: `NUEVO PEDIDO RECIBIDO #${code}`,
+        code,
+        customer: parsed.customer,
+        items: lines,
+        total: total.toFixed(2)
+      });
+    } catch (mailErr) {
+      console.error("Error enviando correos post-venta:", mailErr);
+    }
 
     return { code, status: "PENDING", total: total.toFixed(2) };
+
   } catch (err) {
     await conn.rollback();
     throw err;
