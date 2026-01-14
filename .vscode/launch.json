@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Debug API (nodemon)",
+            "runtimeExecutable": "nodemon",
+            "program": "${workspaceFolder}/src/server.js",
+            "restart": true,
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}
