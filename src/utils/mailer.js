@@ -23,7 +23,7 @@ async function sendNewOrderEmail({ to, subject, code, customer, items, total }) 
   // El link dinámico
   // const orderUrl = `http://localhost:3001/api/orders/${code}`;
   // const orderUrl = `http://localhost:5173/pedido/${code}`;
-  const orderUrl = `https://momstore-p2y7.vercel.app/pedido/${code}`;
+  const orderUrl = `https://www.nutrihome.store/pedido/${code}`;
 
   const mailOptions = {
     from: '"Mi Tienda Online" <olstertecn597@gmail.com>',
