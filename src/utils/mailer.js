@@ -3,12 +3,15 @@ const { MAIL_USER, MAIL_HOST, MAIL_PASS, MAIL_PORT } = require("../config");
 
 const transporter = nodemailer.createTransport({
   host: MAIL_HOST || "smtp.gmail.com",
-  port: MAIL_PORT || 587,
-  secure: false,
+  port: 465 || 587,
+  secure: true,
   auth: {
     user: MAIL_USER || "",
     pass: MAIL_PASS || "bffm fuvl jltr yhdk",
   },
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 });
 
 async function sendNewOrderEmail({ to, subject, code, customer, items, total }) {
