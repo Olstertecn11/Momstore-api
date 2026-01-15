@@ -12,4 +12,19 @@ const pool = mysql.createPool({
   charset: "utf8",
 });
 
-module.exports = { pool };
+async function checkDatabaseConnection() {
+  try {
+    const connection = await pool.getConnection();
+    console.log(`✅ Conectado exitosamente a la BD: ${DB_NAME}`);
+    connection.release();
+    return true;
+  } catch (error) {
+    console.error("❌ ERROR FATAL DE BASE DE DATOS:");
+    console.error(error.message);
+    return false;
+  }
+}
+
+module.exports = {
+  pool, checkDatabaseConnection
+};
