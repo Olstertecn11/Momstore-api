@@ -24,6 +24,7 @@ const allowList = [
   FRONTEND_ORIGIN,          // ej: https://tu-frontend.com
   "http://localhost:5173",  // Vite local
   "http://localhost:3000",
+  "https://www.nutrihome.store"
 ].filter(Boolean);
 
 app.use(
