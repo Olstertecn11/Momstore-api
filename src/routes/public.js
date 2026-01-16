@@ -60,4 +60,45 @@ router.get("/orders/:code", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+
+
+// POST: Crear producto
+router.post("/products", async (req, res, next) => {
+  try {
+    const data = ProductSchema.parse(req.body);
+    const [result] = await pool.execute(
+      `INSERT INTO products (name, description, image_url, price, stock, id_category_fk, is_active) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [data.name, data.description, data.image_url, data.price, data.stock, data.id_category_fk, data.is_active]
+    );
+    res.status(201).json({ id: result.insertId, ...data });
+  } catch (e) {
+    if (e instanceof z.ZodError) return res.status(400).json(e.errors);
+    next(e);
+  }
+});
+
+// PUT: Actualizar producto
+router.put("/products/:id", async (req, res, next) => {
+  try {
+    const data = ProductSchema.parse(req.body);
+    await pool.execute(
+      `UPDATE products SET name=?, description=?, image_url=?, price=?, stock=?, id_category_fk=?, is_active=? 
+       WHERE id_product = ?`,
+      [data.name, data.description, data.image_url, data.price, data.stock, data.id_category_fk, data.is_active, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// DELETE: Eliminación lógica (is_active = 0)
+router.delete("/products/:id", async (req, res, next) => {
+  try {
+    await pool.execute("UPDATE products SET is_active = 0 WHERE id_product = ?", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+
+
 module.exports = router;
