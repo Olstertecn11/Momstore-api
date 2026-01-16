@@ -128,25 +128,75 @@ async function createGuestOrder(payload) {
 }
 
 async function getOrderByCode(code) {
+  // 1. Obtenemos la orden junto con los datos del cliente (registrado o anónimo)
   const [orders] = await pool.execute(
-    `SELECT id_order, code, entry_date, status, expected_delivery_date
-     FROM orders
-     WHERE code = ?
+    `SELECT 
+        o.id_order, 
+        o.code, 
+        o.entry_date, 
+        o.status, 
+        o.expected_delivery_date,
+        o.id_user_fk,
+        o.id_anonymous_order_details_fk,
+        u.username AS registered_username,
+        u.email AS registered_email,
+        a.customer_name, 
+        a.customer_email, 
+        a.customer_phone, 
+        a.customer_address
+     FROM orders o
+     LEFT JOIN users u ON o.id_user_fk = u.id_user
+     LEFT JOIN anonymous_order_details a ON o.id_anonymous_order_details_fk = a.id_anonymous_order_detail
+     WHERE o.code = ?
      LIMIT 1`,
     [code]
   );
+
   if (!orders.length) return null;
 
-  const order = orders[0];
+  const orderData = orders[0];
+
+  // 2. Normalizamos la información del cliente para que sea fácil de usar en el frontend
+  const customer = orderData.id_user_fk
+    ? {
+      is_anonymous: false,
+      name: orderData.registered_username,
+      email: orderData.registered_email,
+      phone: null, // Los usuarios registrados suelen tener su teléfono en la tabla 'users' o un perfil
+      address: 'Consultar perfil de usuario'
+    }
+    : {
+      is_anonymous: true,
+      name: orderData.customer_name,
+      email: orderData.customer_email,
+      phone: orderData.customer_phone,
+      address: orderData.customer_address
+    };
+
+  // 3. Obtenemos los productos de la orden
   const [items] = await pool.execute(
-    `SELECT od.quantity, od.unit_price, od.line_amount, p.name
+    `SELECT 
+        od.quantity, 
+        od.unit_price, 
+        od.line_amount, 
+        p.name,
+        p.image_url
      FROM order_details od
      JOIN products p ON p.id_product = od.id_product_fk
      WHERE od.id_order_fk = ?`,
-    [order.id_order]
+    [orderData.id_order]
   );
 
-  return { ...order, items };
+  // 4. Retornamos el objeto limpio
+  return {
+    id_order: orderData.id_order,
+    code: orderData.code,
+    entry_date: orderData.entry_date,
+    status: orderData.status,
+    expected_delivery_date: orderData.expected_delivery_date,
+    customer, // Aquí van todos los datos del cliente unificados
+    items     // Los productos
+  };
 }
 
 module.exports = { createGuestOrder, getOrderByCode };

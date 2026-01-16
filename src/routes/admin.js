@@ -7,6 +7,27 @@ const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
+
+
+// GET /api/admin/orders/:id/items
+router.get("/orders/:id/items", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.query(
+      `SELECT 
+        od.id_order_detail, od.quantity, od.unit_price, od.line_amount,
+        p.name as product_name, p.image_url
+       FROM order_details od
+       JOIN products p ON od.id_product_fk = p.id_product
+       WHERE od.id_order_fk = ?`,
+      [id]
+    );
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Login admin
 router.post("/auth/login", async (req, res, next) => {
   try {
@@ -33,17 +54,26 @@ router.post("/auth/login", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// Listar pedidos (admin)
-router.get("/orders", requireAuth, async (req, res, next) => {
+// GET /api/admin/orders
+router.get("/orders", async (req, res, next) => {
   try {
+    // Unimos con anonymous_order_details para obtener los datos de envío
+    // y con users por si es un usuario registrado
     const [rows] = await pool.query(
-      `SELECT id_order, code, entry_date, status, expected_delivery_date
-       FROM orders
-       ORDER BY id_order DESC
-       LIMIT 200`
+      `SELECT 
+        o.*, 
+        aod.customer_name, aod.customer_phone, aod.customer_address, aod.customer_email,
+        u.username as registered_username
+       FROM orders o
+       LEFT JOIN anonymous_order_details aod ON o.id_anonymous_order_details_fk = aod.id_anonymous_order_detail
+       LEFT JOIN users u ON o.id_user_fk = u.id_user
+       WHERE o.is_active = 1
+       ORDER BY o.id_order DESC LIMIT 100`
     );
     res.json(rows);
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // Cambiar estado + fecha prometida

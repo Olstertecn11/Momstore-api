@@ -8,7 +8,7 @@ const { authRequired } = require("../middleware/authRequired");
 
 
 
-router.use(requireRole("ADMIN", "WORKER"));
+router.use(requireRole("Administrador", "Cliente"));
 
 // GET /api/admin/orders
 router.get("/orders", async (req, res, next) => {
@@ -24,6 +24,8 @@ router.get("/orders", async (req, res, next) => {
     next(e);
   }
 });
+
+
 
 // PATCH /api/admin/orders/:id/status
 const PatchStatusSchema = z.object({
